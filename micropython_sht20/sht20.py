@@ -69,29 +69,51 @@ class SHT20:
 
     def reset(self) -> None:
         """Perform a soft reset of the sensor, resetting all settings to their power-on defaults"""
-        self._i2c.writeto(self._address, bytes([_SOFTRESET]), False)
-        time.sleep(0.015)
+        max_attempts = 5  # Número máximo de intentos
+        attempt = 0
+        while attempt < max_attempts:
+            try:
+                self._i2c.writeto(self._address, bytes([_SOFTRESET]), False)
+                time.sleep(0.015)  # Tiempo de espera después del reinicio
+                break  # Salir del bucle si el reinicio fue exitoso
+            except OSError as e:
+                # Manejar el error específico aquí
+                print(f"Error al realizar el reinicio del sensor: {e}")
+                attempt += 1
+                time.sleep(0.1)  # Espera antes de intentar de nuevo
+
+        if attempt == max_attempts:
+            print("No se pudo realizar el reinicio del sensor después de varios intentos.")
 
     @property
     def temperature(self) -> float:
         """The measured temperature in Celsius."""
         self._i2c.writeto(self._address, bytes([_TEMPERATURE]), False)
         data = bytearray(3)
-        while True:
-            # While busy, the sensor doesn't respond to reads.
+        max_attempts = 10  # Limitar el número de intentos
+        attempt = 0
+        while attempt < max_attempts:
             try:
                 self._i2c.readfrom_into(self._address, data)
                 if data[0] != 0xFF:  # Check if read succeeded.
                     break
-            except OSError:
-                pass
+            except OSError as e:
+                # Manejar el error específico aquí
+                print(f"Error al leer la temperatura: {e}")
+            attempt += 1
+            time.sleep(0.05)  # Espera corta antes de intentar de nuevo
+
+        if attempt == max_attempts:
+            print("No se pudo leer la temperatura después de varios intentos.")
+            return float('nan')  # Retornar NaN para indicar fallo
+
         value, checksum = struct.unpack(">HB", data)
 
         if checksum != self._crc(data[:2]):
-            raise ValueError("CRC mismatch")
+            print("Error: Desajuste de CRC en la lectura de temperatura.")
+            return float('nan')  # Retornar NaN para indicar fallo
 
         time.sleep(0.050)
-
         return value * 175.72 / 65536.0 - 46.85
 
     @property
@@ -99,20 +121,30 @@ class SHT20:
         """The measured relative humidity in percent."""
         self._i2c.writeto(self._address, bytes([_HUMIDITY]), False)
         data = bytearray(3)
-        while True:
+        max_attempts = 10  # Limitar el número de intentos
+        attempt = 0
+        while attempt < max_attempts:
             try:
                 self._i2c.readfrom_into(self._address, data)
                 if data[0] != 0xFF:
                     break
-            except OSError:
-                pass
+            except OSError as e:
+                # Manejar el error específico aquí
+                print(f"Error al leer la humedad: {e}")
+            attempt += 1
+            time.sleep(0.05)  # Espera corta antes de intentar de nuevo
+
+        if attempt == max_attempts:
+            print("No se pudo leer la humedad después de varios intentos.")
+            return float('nan')  # Retornar NaN para indicar fallo
+
         value, checksum = struct.unpack(">HB", data)
 
         if checksum != self._crc(data[:2]):
-            raise ValueError("CRC mismatch")
+            print("Error: Desajuste de CRC en la lectura de humedad.")
+            return float('nan')  # Retornar NaN para indicar fallo
 
         time.sleep(0.016)
-
         return value * 125.0 / 65536.0 - 6.0
 
     @property
